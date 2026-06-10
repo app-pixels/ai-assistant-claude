@@ -1,3 +1,5 @@
+> Part of [**app-pixels.com**](https://www.app-pixels.com) — browse + flash this app at [`/apps/ai-assistant-claude`](https://www.app-pixels.com/apps/ai-assistant-claude).
+
 # ai-assistant-claude
 
 **AI Assistant (Claude)** · v1.1.0
