@@ -342,8 +342,7 @@ void draw_pill_label(Arduino_GFX *gfx, uint8_t rotation, uint8_t button,
         int16_t px    = btnX - pillW / 2;
         int16_t py    = 4;
 
-        gfx->fillRoundRect(px, py, pillW, pillH, rad, HUD_PILL_BG);
-        gfx->drawRoundRect(px, py, pillW, pillH, rad, HUD_PILL_BD);
+        gfx->fillRoundRect(px, py, pillW, pillH, rad, 0x0000);   // black pill bg — keeps label readable over any UI
         drawTextPx(gfx, px + padX, py + padY, action, HUD_PILL_TX, stride, pxSz);
     } else {
         // ── Portrait (rot=0 or 0xFF): vertical pill on RIGHT edge ───────
@@ -354,8 +353,7 @@ void draw_pill_label(Arduino_GFX *gfx, uint8_t rotation, uint8_t button,
         int16_t px    = LCD_WIDTH - pillW - 4;
         int16_t py    = btnY - pillH / 2;
 
-        gfx->fillRoundRect(px, py, pillW, pillH, rad, HUD_PILL_BG);
-        gfx->drawRoundRect(px, py, pillW, pillH, rad, HUD_PILL_BD);
+        gfx->fillRoundRect(px, py, pillW, pillH, rad, 0x0000);   // black pill bg — keeps label readable over any UI
         drawTextRot(gfx, px + padX, py + padY, action, HUD_PILL_TX, stride, pxSz);
     }
 }

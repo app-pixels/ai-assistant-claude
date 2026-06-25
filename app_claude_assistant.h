@@ -4,5 +4,5 @@
 #pragma once
 #include "Arduino_GFX_Library.h"
 
-void app_claude_assistant_setup(Arduino_SH8601 *gfx);
+void app_claude_assistant_setup(Arduino_OLED *gfx);
 void app_claude_assistant_loop();
