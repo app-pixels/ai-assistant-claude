@@ -13,7 +13,7 @@
 #include <Wire.h>
 #include "ESP_I2S.h"
 #include "es8311.h"
-#include "pin_config.h"
+#include "board.h"
 #include "HWCDC.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"

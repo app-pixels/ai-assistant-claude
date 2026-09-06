@@ -2,7 +2,7 @@
 
 # ai-assistant-claude
 
-**AI Assistant (Claude)** · v1.1.0
+**AI Assistant (Claude)** · v1.1.1
 
 Voice-to-text AI assistant — Anthropic Claude for the reply, Groq Whisper for STT. Claude can call device + web tools.
 
@@ -36,6 +36,8 @@ Sibling to [**AI Chat (free — groq)**](/apps/ai-chat) — same UI, same contro
 - `TIMEZONE` — POSIX TZ string for the time tool (e.g. `CET-1CEST,M3.5.0,M10.5.0/3`). Defaults to UTC.
 - `LOCATION_1` — city name for the `get_weather` tool (geocoded on first use).
 - `CLAUDE_WEBSEARCH` — `0`/`off`/`no`/`false` disables web search by default. Anything else (incl. missing) leaves it on.
+- `CLAUDE_MODEL` — which Claude model answers. Default `claude-haiku-4-5`. Use `claude-sonnet-5` (~2x the cost) or `claude-opus-5` (~5x) for harder questions.
+- `GROQ_STT_MODEL` — which model transcribes your voice. Default `whisper-large-v3-turbo`.
 
 ## How to get a Claude API key (2 minutes)
 

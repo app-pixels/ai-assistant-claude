@@ -12,7 +12,7 @@
  */
 
 #include "app_common.h"
-#include "pin_config.h"
+#include "board.h"
 #include <Arduino.h>
 #include <Preferences.h>
 #include <string.h>
@@ -190,9 +190,26 @@ size_t utf8_to_cp437(char *dst, size_t cap, const char *src) {
             }
             p += 2;
         } else if (b == 0xC2 && p[1]) {
-            // C2 xx — Latin-1 supplement (degree sign etc.)
-            dst[di++] = (char)(uint8_t)p[1];
+            // C2 xx — Latin-1 supplement (degree sign etc.). A0 is a non-break
+            // space: CP437 renders that byte as 'a-acute', so emit a real space.
+            dst[di++] = ((uint8_t)p[1] == 0xA0) ? ' ' : (char)(uint8_t)p[1];
             p += 2;
+        } else if (b == 0xE2 && p[1] == (char)0x80 && p[2]) {
+            // U+20xx typographic punctuation. LLM replies are full of these
+            // (gpt-oss writes "330<U+202F>Meter"), and without a mapping they
+            // would each land in the '?' fallback below.
+            switch ((uint8_t)p[2]) {
+                case 0x89: case 0xAF: dst[di++] = ' ';  break;  // thin / narrow space
+                case 0x93: case 0x94: dst[di++] = '-';  break;  // en / em dash
+                case 0x98: case 0x99: dst[di++] = '\''; break;  // curly single quotes
+                case 0x9C: case 0x9D: dst[di++] = '"';  break;  // curly double quotes
+                case 0xA2:            dst[di++] = '*';  break;  // bullet
+                case 0xA6:                                      // ellipsis
+                    for (int k = 0; k < 3 && di < cap - 1; k++) dst[di++] = '.';
+                    break;
+                default:              dst[di++] = '?';  break;
+            }
+            p += 3;
         } else if (b < 0x80) {
             dst[di++] = *p++;
         } else {
@@ -417,8 +434,8 @@ void draw_watermark_p(Arduino_SH8601 *gfx) {
 
 // ── Landscape HUD (448×368) ──────────────────────────────────────────────────
 
-#define L_W  448
-#define L_H  368
+#define L_W  LCD_HEIGHT   // landscape width = portrait height
+#define L_H  LCD_WIDTH
 
 void draw_battery_l(Arduino_Canvas *canvas) {
     drawBatteryAt(canvas, L_W - CORNER_R - 18, 10);

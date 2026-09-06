@@ -14,19 +14,16 @@
 #pragma once
 
 #include <stdint.h>
-#include "pin_config.h"          // must precede XPowersLib — defines XPOWERS_CHIP_AXP2101
+#include "board.h"          // must precede XPowersLib — defines XPOWERS_CHIP_AXP2101
 #include "XPowersLib.h"
 #include "Arduino_GFX_Library.h"
 #include "canvas/Arduino_Canvas.h"
 
 // ── Display corner safe zone ─────────────────────────────────────────────────
-#define CORNER_R        50    // AMOLED display corner radius in px
+// CORNER_R and the *_BTN_* button positions are per-device and come
+// from board.h (included above).
 
 // ── Physical hardware button positions (portrait, right edge of device) ──────
-#define BOOT_BTN_Y_P    90    // "talk" pill (portrait) — nudged up 5 px
-#define PWR_BTN_Y_P    355    // "new"  pill (portrait) — nudged down 10 px
-#define BOOT_BTN_X_L    95    // BOOT mapped to landscape x (rotation=1)
-#define PWR_BTN_X_L    345    // PWR  mapped to landscape x (rotation=1)
 
 // ── HUD colours ──────────────────────────────────────────────────────────────
 #define HUD_COL_BAT  0x2104   // dim grey (battery icon)

@@ -13,6 +13,14 @@
  *   CLAUDE_WEBSEARCH  — "0" / "off" / "no" / "false" disables Anthropic's
  *                       hosted web_search tool. Anything else (incl. missing
  *                       key) leaves it ON — the default.
+ *   CLAUDE_MODEL      — optional Claude model override.
+ *                       Default: claude-haiku-4-5  ($1/$5 per 1M tokens)
+ *                       Alternatives: claude-sonnet-5 ($2/$10),
+ *                       claude-opus-5 ($5/$25) — both smarter, both cost more
+ *                       per question. This request sends no temperature or
+ *                       thinking parameters, so every current model accepts it.
+ *   GROQ_STT_MODEL    — optional speech-to-text override.
+ *                       Default: whisper-large-v3-turbo
  *   LANGUAGE          — optional ISO-639-1 hint for Whisper (e.g. de, en).
  *                       Omit or leave empty for auto-detection.
  */
@@ -31,7 +39,7 @@
 #include <math.h>
 #include "SensorQMI8658.hpp"
 #include "canvas/Arduino_Canvas.h"
-#include "pin_config.h"
+#include "board.h"
 #include "HWCDC.h"
 #include "TouchDrvFT6X36.hpp"
 #include "Fonts/FreeMonoBold12pt7b.h"
@@ -55,7 +63,7 @@ extern TouchDrvInterface *touch;
 #define GROQ_PORT       443
 #define CLAUDE_HOST     "api.anthropic.com"
 #define CLAUDE_PORT     443
-#define CLAUDE_MODEL    "claude-haiku-4-5"
+#define CLAUDE_MODEL_DEFAULT "claude-haiku-4-5"
 #define CLAUDE_API_VER  "2023-06-01"
 #define HTTP_TIMEOUT_MS 30000
 #define BOUNDARY        "----ESP32Bnd9a7f3c"
@@ -84,6 +92,11 @@ static char     s_pass[3][64]    = {};
 static char     s_groqKey[128]   = {};
 static char     s_claudeKey[128] = {};
 static char     s_lang[8]        = {};   // empty = auto-detect
+// Overridable from setup.txt: providers retire models (Groq removed every
+// Llama chat model in 2026-08 and broke the sibling app), so a model swap
+// should be a text edit rather than a firmware release.
+static char     s_model[64]      = CLAUDE_MODEL_DEFAULT;
+static char     s_sttModel[48]   = "whisper-large-v3-turbo";
 static bool     s_webSearch      = true; // CLAUDE_WEBSEARCH from setup.txt
 static char     s_timezone[64]   = "UTC0"; // POSIX TZ string from setup.txt
 static char     s_location[64]   = {};   // LOCATION_1 from setup.txt (city name)
@@ -181,6 +194,13 @@ static bool readConfig() {
         extractVal(line, "GROQ_KEY",   s_groqKey,   128);
         extractVal(line, "CLAUDE_KEY", s_claudeKey, 128);
         extractVal(line, "LANGUAGE",   s_lang,      8);
+        // Temp buffer: extractVal() clears its output before reporting a
+        // miss, so a bare "CLAUDE_MODEL=" line would wipe the default.
+        char tmpm[64];
+        if (extractVal(line, "CLAUDE_MODEL", tmpm, sizeof(tmpm)) && tmpm[0])
+            strncpy(s_model, tmpm, sizeof(s_model) - 1);
+        if (extractVal(line, "GROQ_STT_MODEL", tmpm, sizeof(tmpm)) && tmpm[0])
+            strncpy(s_sttModel, tmpm, sizeof(s_sttModel) - 1);
         extractVal(line, "TIMEZONE",   s_timezone,  64);
         extractVal(line, "LOCATION_1", s_location,  64);
         // CLAUDE_WEBSEARCH = 0 | off | no | false → disable. Anything else
@@ -306,7 +326,7 @@ static String groqTranscribe(const int16_t *pcm, uint32_t numSamples) {
     String part1end = "\r\n";
     String part2 = String("--") + BOUNDARY + "\r\n"
         "Content-Disposition: form-data; name=\"model\"\r\n\r\n"
-        "whisper-large-v3-turbo\r\n";
+        + String(s_sttModel) + "\r\n";
     // Optional language hint: only sent when LANGUAGE is set in setup.txt.
     // Empty → Whisper auto-detects.
     String part3;
@@ -531,6 +551,8 @@ static String tool_get_orientation(JsonVariant input) {
         if (s_imu.getDataReady()) {
             float x, y, z;
             s_imu.getAccelerometer(x, y, z);
+            // Normalise IMU axes to the reference board orientation.
+            x *= BOARD_IMU_AX_SIGN; y *= BOARD_IMU_AY_SIGN; z *= BOARD_IMU_AZ_SIGN;
             ax += x; ay += y; az += z;
             got++;
         }
@@ -805,11 +827,30 @@ static String executeTool(const char *name, JsonVariant input) {
 // ── Single HTTP round-trip to Anthropic Messages API ────────────────────────
 // Sends the current request doc, returns the response body as a parsed JSON
 // document via `out`. Returns false on transport/parse error.
+// One transport-level retry. The TLS handshake needs a sizeable heap block and
+// runs right after STT has held a ~1 MB audio buffer, so it occasionally fails
+// transiently — which cost the user the question they had just spoken
+// ("Chat failed", observed 2026-09-06 and gone on the next attempt). Only
+// connect/empty-body/parse failures are retried; a real API error is a parsed
+// JSON response and never reaches here.
+static bool postClaudeOnce(const String &reqBody, JsonDocument &out);
+
 static bool postClaude(JsonDocument &reqDoc, JsonDocument &out) {
     String reqBody;
     serializeJson(reqDoc, reqBody);
     USBSerial.printf("[claude] req %d bytes\n", reqBody.length());
 
+    for (int attempt = 0; attempt < 2; attempt++) {
+        if (attempt) {
+            USBSerial.printf("[claude] retrying (heap %u)\n", ESP.getFreeHeap());
+            delay(600);
+        }
+        if (postClaudeOnce(reqBody, out)) return true;
+    }
+    return false;
+}
+
+static bool postClaudeOnce(const String &reqBody, JsonDocument &out) {
     WiFiClientSecure client;
     client.setInsecure();
     client.setTimeout(HTTP_TIMEOUT_MS / 1000);
@@ -825,7 +866,6 @@ static bool postClaude(JsonDocument &reqDoc, JsonDocument &out) {
         "Content-Length: " + String(reqBody.length()) + "\r\n"
         "Connection: close\r\n\r\n");
     client.print(reqBody);
-    reqBody = String();
 
     String body = readHttpResponse(client);
     if (body.length() == 0) { USBSerial.println("[claude] empty response"); return false; }
@@ -846,7 +886,7 @@ static String claudeChat(const String &userMessage) {
                      ESP.getFreeHeap(), ESP.getMaxAllocHeap());
 
     JsonDocument doc;
-    doc["model"]      = CLAUDE_MODEL;
+    doc["model"]      = s_model;
     doc["max_tokens"] = 1024;
     doc["system"]     = "Answer in as few words as possible — a single word or short phrase when you can. Reply in the same language the user uses. Use tools when they give you accurate device or external data (battery, time, weather, notes, etc.) — do not guess. Only call restart_device or power_off when the user explicitly asks for it. Use web_search only when current information is required.";
 
